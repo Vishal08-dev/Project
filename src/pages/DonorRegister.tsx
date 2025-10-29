@@ -3,6 +3,7 @@ import { Heart, User, Mail, Phone, MapPin, Lock, Calendar, Droplet } from 'lucid
 import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { api } from '../services/api';
 
 export default function DonorRegister() {
   const navigate = useNavigate();
@@ -19,30 +20,47 @@ export default function DonorRegister() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [error, setError] = useState('');
 
   const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match!');
+      setError('Passwords do not match!');
       return;
     }
 
     setIsSubmitting(true);
+    setError('');
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+    const result = await api.auth.register({
+      fullName: formData.fullName,
+      age: parseInt(formData.age),
+      gender: formData.gender,
+      bloodGroup: formData.bloodGroup,
+      contact: formData.contact,
+      email: formData.email,
+      city: formData.city,
+      password: formData.password,
+    });
+
+    setIsSubmitting(false);
+
+    if (result.error) {
+      setError(result.error);
+    } else {
       setShowSuccess(true);
       setTimeout(() => {
         navigate('/login');
       }, 2000);
-    }, 1500);
+    }
   };
 
   return (
@@ -256,6 +274,12 @@ export default function DonorRegister() {
                   </div>
                 </div>
               </div>
+
+              {error && (
+                <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                  {error}
+                </div>
+              )}
 
               <button
                 type="submit"

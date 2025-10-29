@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Heart,
   LayoutDashboard,
@@ -13,39 +13,152 @@ import {
   XCircle,
   Clock,
   Search,
+  Loader,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../services/api';
+
+interface DashboardStats {
+  total_donors: number;
+  total_requests: number;
+  approved_requests: number;
+  pending_requests: number;
+}
+
+interface Donor {
+  id: number;
+  full_name: string;
+  blood_group: string;
+  email: string;
+  city: string;
+  status: string;
+}
+
+interface BloodRequest {
+  id: number;
+  name: string;
+  blood_group: string;
+  units: number;
+  hospital_name: string;
+  status: string;
+}
+
+interface BloodStock {
+  id: number;
+  blood_group: string;
+  units_available: number;
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(true);
 
-  const donors = [
-    { id: 1, name: 'John Smith', bloodGroup: 'A+', email: 'john@email.com', city: 'New York', status: 'pending' },
-    { id: 2, name: 'Sarah Johnson', bloodGroup: 'O+', email: 'sarah@email.com', city: 'Boston', status: 'pending' },
-    { id: 3, name: 'Mike Wilson', bloodGroup: 'B+', email: 'mike@email.com', city: 'Chicago', status: 'approved' },
-  ];
+  const [stats, setStats] = useState<DashboardStats>({
+    total_donors: 0,
+    total_requests: 0,
+    approved_requests: 0,
+    pending_requests: 0,
+  });
+  const [donors, setDonors] = useState<Donor[]>([]);
+  const [requests, setRequests] = useState<BloodRequest[]>([]);
+  const [bloodStock, setBloodStock] = useState<BloodStock[]>([]);
 
-  const requests = [
-    { id: 1, patient: 'Emily Davis', bloodGroup: 'AB+', units: 2, hospital: 'City Hospital', status: 'pending' },
-    { id: 2, patient: 'Robert Brown', bloodGroup: 'O-', units: 1, hospital: 'General Hospital', status: 'approved' },
-    { id: 3, patient: 'Lisa Anderson', bloodGroup: 'A+', units: 3, hospital: 'Medical Center', status: 'pending' },
-  ];
+  useEffect(() => {
+    loadData();
+  }, [activeTab]);
 
-  const bloodStock = [
-    { group: 'A+', units: 150, percentage: 75 },
-    { group: 'A-', units: 80, percentage: 40 },
-    { group: 'B+', units: 120, percentage: 60 },
-    { group: 'B-', units: 60, percentage: 30 },
-    { group: 'O+', units: 200, percentage: 100 },
-    { group: 'O-', units: 50, percentage: 25 },
-    { group: 'AB+', units: 90, percentage: 45 },
-    { group: 'AB-', units: 40, percentage: 20 },
-  ];
+  const loadData = async () => {
+    setLoading(true);
+
+    if (activeTab === 'dashboard') {
+      await loadDashboardData();
+    } else if (activeTab === 'donors') {
+      await loadDonors();
+    } else if (activeTab === 'requests') {
+      await loadRequests();
+    } else if (activeTab === 'stock') {
+      await loadBloodStock();
+    }
+
+    setLoading(false);
+  };
+
+  const loadDashboardData = async () => {
+    const statsResult = await api.admin.getDashboardStats();
+    if (statsResult.data) {
+      setStats(statsResult.data);
+    }
+
+    const donorsResult = await api.admin.getPendingDonors();
+    if (donorsResult.data) {
+      setDonors(donorsResult.data.donors.slice(0, 3));
+    }
+
+    const requestsResult = await api.admin.getPendingRequests();
+    if (requestsResult.data) {
+      setRequests(requestsResult.data.requests.slice(0, 3));
+    }
+  };
+
+  const loadDonors = async () => {
+    const result = await api.donors.getAll();
+    if (result.data) {
+      setDonors(result.data.donors);
+    }
+  };
+
+  const loadRequests = async () => {
+    const result = await api.bloodRequests.getAll();
+    if (result.data) {
+      setRequests(result.data.requests);
+    }
+  };
+
+  const loadBloodStock = async () => {
+    const result = await api.admin.getBloodStock();
+    if (result.data) {
+      setBloodStock(result.data.stock);
+    }
+  };
+
+  const handleApproveDonor = async (donorId: number) => {
+    const result = await api.donors.approve(donorId);
+    if (!result.error) {
+      loadData();
+    }
+  };
+
+  const handleRejectDonor = async (donorId: number) => {
+    const result = await api.donors.reject(donorId);
+    if (!result.error) {
+      loadData();
+    }
+  };
+
+  const handleApproveRequest = async (requestId: number) => {
+    const result = await api.admin.approveRequest(requestId);
+    if (!result.error) {
+      loadData();
+    }
+  };
+
+  const handleRejectRequest = async (requestId: number) => {
+    const result = await api.admin.rejectRequest(requestId);
+    if (!result.error) {
+      loadData();
+    }
+  };
 
   const handleLogout = () => {
+    api.auth.logout();
     navigate('/login');
+  };
+
+  const calculatePercentage = (units: number) => {
+    const maxUnits = 200;
+    return Math.min((units / maxUnits) * 100, 100);
   };
 
   const SidebarContent = () => (
@@ -179,269 +292,305 @@ export default function AdminDashboard() {
         </header>
 
         <main className="p-4 sm:p-6 lg:p-8">
-          {activeTab === 'dashboard' && (
-            <div className="space-y-8">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Dashboard Overview</h1>
-                <p className="text-gray-600">Monitor and manage blood donation activities</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-gray-600 text-sm font-medium">Total Donors</h3>
-                    <Users className="w-8 h-8 text-blue-600" />
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader className="w-8 h-8 text-[#C62828] animate-spin" />
+            </div>
+          ) : (
+            <>
+              {activeTab === 'dashboard' && (
+                <div className="space-y-8">
+                  <div>
+                    <h1 className="text-3xl font-bold text-gray-800 mb-2">Dashboard Overview</h1>
+                    <p className="text-gray-600">Monitor and manage blood donation activities</p>
                   </div>
-                  <p className="text-3xl font-bold text-gray-800">5,234</p>
-                  <p className="text-sm text-green-600 mt-2">+12% this month</p>
-                </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-gray-600 text-sm font-medium">Total Requests</h3>
-                    <FileText className="w-8 h-8 text-purple-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-gray-800">847</p>
-                  <p className="text-sm text-green-600 mt-2">+8% this month</p>
-                </div>
-
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-gray-600 text-sm font-medium">Approved</h3>
-                    <CheckCircle className="w-8 h-8 text-green-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-gray-800">652</p>
-                  <p className="text-sm text-gray-600 mt-2">77% approval rate</p>
-                </div>
-
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-gray-600 text-sm font-medium">Pending</h3>
-                    <Clock className="w-8 h-8 text-yellow-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-gray-800">195</p>
-                  <p className="text-sm text-gray-600 mt-2">Needs review</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">Recent Donor Registrations</h2>
-                  <div className="space-y-3">
-                    {donors.slice(0, 3).map((donor) => (
-                      <div key={donor.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-semibold text-gray-800">{donor.name}</p>
-                          <p className="text-sm text-gray-600">{donor.email}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
-                            {donor.bloodGroup}
-                          </span>
-                        </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-gray-600 text-sm font-medium">Total Donors</h3>
+                        <Users className="w-8 h-8 text-blue-600" />
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <p className="text-3xl font-bold text-gray-800">{stats.total_donors}</p>
+                    </div>
 
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">Recent Blood Requests</h2>
-                  <div className="space-y-3">
-                    {requests.slice(0, 3).map((request) => (
-                      <div key={request.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-semibold text-gray-800">{request.patient}</p>
-                          <p className="text-sm text-gray-600">{request.hospital}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
-                            {request.bloodGroup}
-                          </span>
-                          <p className="text-xs text-gray-600 mt-1">{request.units} units</p>
-                        </div>
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-gray-600 text-sm font-medium">Total Requests</h3>
+                        <FileText className="w-8 h-8 text-purple-600" />
                       </div>
-                    ))}
+                      <p className="text-3xl font-bold text-gray-800">{stats.total_requests}</p>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-gray-600 text-sm font-medium">Approved</h3>
+                        <CheckCircle className="w-8 h-8 text-green-600" />
+                      </div>
+                      <p className="text-3xl font-bold text-gray-800">{stats.approved_requests}</p>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-gray-600 text-sm font-medium">Pending</h3>
+                        <Clock className="w-8 h-8 text-yellow-600" />
+                      </div>
+                      <p className="text-3xl font-bold text-gray-800">{stats.pending_requests}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <h2 className="text-xl font-bold text-gray-800 mb-4">Recent Donor Registrations</h2>
+                      <div className="space-y-3">
+                        {donors.length > 0 ? donors.map((donor) => (
+                          <div key={donor.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="font-semibold text-gray-800">{donor.full_name}</p>
+                              <p className="text-sm text-gray-600">{donor.email}</p>
+                            </div>
+                            <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
+                              {donor.blood_group}
+                            </span>
+                          </div>
+                        )) : (
+                          <p className="text-gray-500 text-center py-4">No recent donors</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <h2 className="text-xl font-bold text-gray-800 mb-4">Recent Blood Requests</h2>
+                      <div className="space-y-3">
+                        {requests.length > 0 ? requests.map((request) => (
+                          <div key={request.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="font-semibold text-gray-800">{request.name}</p>
+                              <p className="text-sm text-gray-600">{request.hospital_name}</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
+                                {request.blood_group}
+                              </span>
+                              <p className="text-xs text-gray-600 mt-1">{request.units} units</p>
+                            </div>
+                          </div>
+                        )) : (
+                          <p className="text-gray-500 text-center py-4">No recent requests</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {activeTab === 'donors' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Donor Management</h1>
-                <p className="text-gray-600">Review and approve donor registrations</p>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Name</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Blood Group</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Email</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">City</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {donors.map((donor) => (
-                        <tr key={donor.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 text-sm text-gray-800 font-medium">{donor.name}</td>
-                          <td className="px-6 py-4">
-                            <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
-                              {donor.bloodGroup}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-600">{donor.email}</td>
-                          <td className="px-6 py-4 text-sm text-gray-600">{donor.city}</td>
-                          <td className="px-6 py-4">
-                            <span
-                              className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                                donor.status === 'approved'
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-yellow-100 text-yellow-700'
-                              }`}
-                            >
-                              {donor.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            {donor.status === 'pending' && (
-                              <div className="flex space-x-2">
-                                <button className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors">
-                                  <CheckCircle className="w-5 h-5" />
-                                </button>
-                                <button className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors">
-                                  <XCircle className="w-5 h-5" />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'requests' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Blood Requests</h1>
-                <p className="text-gray-600">Manage and approve blood requests</p>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Patient</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Blood Group</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Units</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Hospital</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {requests.map((request) => (
-                        <tr key={request.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 text-sm text-gray-800 font-medium">{request.patient}</td>
-                          <td className="px-6 py-4">
-                            <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
-                              {request.bloodGroup}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-600">{request.units}</td>
-                          <td className="px-6 py-4 text-sm text-gray-600">{request.hospital}</td>
-                          <td className="px-6 py-4">
-                            <span
-                              className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                                request.status === 'approved'
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-yellow-100 text-yellow-700'
-                              }`}
-                            >
-                              {request.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            {request.status === 'pending' && (
-                              <div className="flex space-x-2">
-                                <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
-                                  Approve
-                                </button>
-                                <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
-                                  Reject
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'stock' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Blood Stock Management</h1>
-                <p className="text-gray-600">Monitor blood availability by type</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {bloodStock.map((stock) => (
-                  <div key={stock.group} className="bg-white rounded-xl shadow-md p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-2xl font-bold text-[#C62828]">{stock.group}</span>
-                      <Droplet className="w-8 h-8 text-[#C62828]" />
-                    </div>
-                    <p className="text-3xl font-bold text-gray-800 mb-4">{stock.units}</p>
-                    <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
-                      <div
-                        className={`h-3 rounded-full ${
-                          stock.percentage >= 70
-                            ? 'bg-green-500'
-                            : stock.percentage >= 40
-                            ? 'bg-yellow-500'
-                            : 'bg-red-500'
-                        }`}
-                        style={{ width: `${stock.percentage}%` }}
-                      />
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      {stock.percentage}% capacity
-                    </p>
+              {activeTab === 'donors' && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="text-3xl font-bold text-gray-800 mb-2">Donor Management</h1>
+                    <p className="text-gray-600">Review and approve donor registrations</p>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {activeTab === 'reports' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Reports & Analytics</h1>
-                <p className="text-gray-600">View comprehensive donation statistics</p>
-              </div>
+                  <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Name</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Blood Group</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Email</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">City</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {donors.length > 0 ? donors.map((donor) => (
+                            <tr key={donor.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 text-sm text-gray-800 font-medium">{donor.full_name}</td>
+                              <td className="px-6 py-4">
+                                <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
+                                  {donor.blood_group}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-600">{donor.email}</td>
+                              <td className="px-6 py-4 text-sm text-gray-600">{donor.city}</td>
+                              <td className="px-6 py-4">
+                                <span
+                                  className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                                    donor.status === 'approved'
+                                      ? 'bg-green-100 text-green-700'
+                                      : donor.status === 'rejected'
+                                      ? 'bg-red-100 text-red-700'
+                                      : 'bg-yellow-100 text-yellow-700'
+                                  }`}
+                                >
+                                  {donor.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                {donor.status === 'pending' && (
+                                  <div className="flex space-x-2">
+                                    <button
+                                      onClick={() => handleApproveDonor(donor.id)}
+                                      className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                                    >
+                                      <CheckCircle className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleRejectDonor(donor.id)}
+                                      className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                                    >
+                                      <XCircle className="w-5 h-5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr>
+                              <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                No donors found
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              <div className="bg-white rounded-xl shadow-md p-8 text-center">
-                <BarChart3 className="w-16 h-16 text-[#C62828] mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Reports Coming Soon</h3>
-                <p className="text-gray-600">Detailed analytics and reporting features will be available here</p>
-              </div>
-            </div>
+              {activeTab === 'requests' && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="text-3xl font-bold text-gray-800 mb-2">Blood Requests</h1>
+                    <p className="text-gray-600">Manage and approve blood requests</p>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Patient</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Blood Group</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Units</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Hospital</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {requests.length > 0 ? requests.map((request) => (
+                            <tr key={request.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 text-sm text-gray-800 font-medium">{request.name}</td>
+                              <td className="px-6 py-4">
+                                <span className="inline-block px-3 py-1 bg-[#C62828] text-white rounded-full text-sm font-medium">
+                                  {request.blood_group}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-600">{request.units}</td>
+                              <td className="px-6 py-4 text-sm text-gray-600">{request.hospital_name}</td>
+                              <td className="px-6 py-4">
+                                <span
+                                  className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                                    request.status === 'approved'
+                                      ? 'bg-green-100 text-green-700'
+                                      : request.status === 'rejected'
+                                      ? 'bg-red-100 text-red-700'
+                                      : 'bg-yellow-100 text-yellow-700'
+                                  }`}
+                                >
+                                  {request.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                {request.status === 'pending' && (
+                                  <div className="flex space-x-2">
+                                    <button
+                                      onClick={() => handleApproveRequest(request.id)}
+                                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => handleRejectRequest(request.id)}
+                                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr>
+                              <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                No blood requests found
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'stock' && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="text-3xl font-bold text-gray-800 mb-2">Blood Stock Management</h1>
+                    <p className="text-gray-600">Monitor blood availability by type</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {bloodStock.length > 0 ? bloodStock.map((stock) => (
+                      <div key={stock.id} className="bg-white rounded-xl shadow-md p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="text-2xl font-bold text-[#C62828]">{stock.blood_group}</span>
+                          <Droplet className="w-8 h-8 text-[#C62828]" />
+                        </div>
+                        <p className="text-3xl font-bold text-gray-800 mb-4">{stock.units_available}</p>
+                        <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                          <div
+                            className={`h-3 rounded-full ${
+                              calculatePercentage(stock.units_available) >= 70
+                                ? 'bg-green-500'
+                                : calculatePercentage(stock.units_available) >= 40
+                                ? 'bg-yellow-500'
+                                : 'bg-red-500'
+                            }`}
+                            style={{ width: `${calculatePercentage(stock.units_available)}%` }}
+                          />
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          {calculatePercentage(stock.units_available).toFixed(0)}% capacity
+                        </p>
+                      </div>
+                    )) : (
+                      <p className="text-gray-500 col-span-4 text-center py-8">No blood stock data available</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'reports' && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="text-3xl font-bold text-gray-800 mb-2">Reports & Analytics</h1>
+                    <p className="text-gray-600">View comprehensive donation statistics</p>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-md p-8 text-center">
+                    <BarChart3 className="w-16 h-16 text-[#C62828] mx-auto mb-4" />
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">Reports Coming Soon</h3>
+                    <p className="text-gray-600">Detailed analytics and reporting features will be available here</p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>
