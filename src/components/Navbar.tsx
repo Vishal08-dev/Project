@@ -10,8 +10,10 @@ export default function Navbar() {
 
   const navLinks = [
     { name: 'Home', path: '/' },
-    { name: 'Donor Registration', path: '/donor-register' },
+    { name: 'Donors', path: '/donor-search' },
+    { name: 'Register', path: '/donor-register' },
     { name: 'Request Blood', path: '/request-blood' },
+    { name: 'Analytics', path: '/analytics' },
     { name: 'Contact', path: '/contact' },
   ];
 
